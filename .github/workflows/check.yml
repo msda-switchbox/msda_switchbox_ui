@@ -1,0 +1,57 @@
+# workflow which lints and checks the rust code on every push and pull request
+name: Check
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      # https://github.com/actions/checkout
+      - name: checkout
+        uses: actions/checkout@v4
+
+      # https://github.com/actions/setup-node
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # https://github.com/pnpm/action-setup
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          version: 9
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: sh
+        run: |
+          #!/bin/sh
+          set -eux;
+          printf '%s=%s\n' \
+            "STORE_PATH" "$(pnpm store path --silent)" \
+            | tee "$GITHUB_ENV";
+
+      # https://github.com/actions/cache
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: pnpm install
+        run: pnpm install
+
+      # https://github.com/pre-commit/action
+      - name: run pre-commit
+        uses: pre-commit/action@v3.0.1
+        env:
+          SKIP: no-commit-to-branch

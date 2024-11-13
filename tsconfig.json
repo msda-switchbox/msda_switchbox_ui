@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    },
+    {
+      "path": "./tsconfig.app.json"
+    }
+  ],
+  "exclude": ["node_modules", "**/*.spec.ts"],
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ES6"
+  }
+}

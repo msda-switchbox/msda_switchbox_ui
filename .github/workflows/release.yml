@@ -1,0 +1,110 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      archive_name: ${{ steps.metadata.outputs.ARCHIVE_NAME }}
+      project_name: ${{ steps.metadata.outputs.PROJECT_NAME }}
+      store_path: ${{ steps.metadata.outputs.STORE_PATH }}
+    steps:
+      # https://github.com/actions/checkout
+      - name: checkout
+        uses: actions/checkout@v4
+
+      # https://github.com/actions/setup-node
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # https://github.com/pnpm/action-setup
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          version: 9
+          run_install: false
+
+      - name: Extract Project Data
+        id: metadata
+        shell: sh
+        run: |
+          #!/bin/sh
+          set -eux;
+          STORE_PATH=$(pnpm store path --silent);
+          PROJECT_NAME=$(jq -r .name package.json);
+          ARCHIVE_NAME="${PROJECT_NAME}.tgz"
+
+          printf '%s=%s\n' \
+              "ARCHIVE_NAME" "$ARCHIVE_NAME" \
+              "PROJECT_NAME" "$PROJECT_NAME" \
+              "STORE_PATH" "$STORE_PATH" \
+              | tee "$GITHUB_ENV" \
+              | tee "$GITHUB_OUTPUT";
+
+      # https://github.com/actions/cache
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: pnpm install
+        run: pnpm install
+
+      - name: pnpm build
+        shell: sh
+        run: |
+          #!/bin/sh
+          set -eux;
+          pnpm build;
+          mv -i dist "${PROJECT_NAME}";
+          tar -cvzf "${ARCHIVE_NAME}" "${PROJECT_NAME}";
+
+      # https://github.com/actions/upload-artifact/
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}
+          path: ${{ env.ARCHIVE_NAME }}
+          compression-level: 9 # maximum compression
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # https://github.com/actions/download-artifact/
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{needs.build.outputs.project_name}}
+
+      - name: Show files
+        shell: sh
+        env:
+          PROJECT_NAME: ${{needs.build.outputs.project_name}}
+          ARCHIVE_NAME: ${{needs.build.outputs.archive_name}}
+        run: |
+          #!/bin/sh
+          find .
+          printf 'Config: %s=%s\n' \
+            "ARCHIVE_NAME" "$ARCHIVE_NAME" \
+            "PROJECT_NAME" "$PROJECT_NAME";
+
+      # https://github.com/softprops/action-gh-release
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{needs.build.outputs.archive_name}}
