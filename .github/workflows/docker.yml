@@ -11,6 +11,8 @@ jobs:
   # https://github.com/edencehealth/workflows
   docker:
     uses: edencehealth/workflows/.github/workflows/dockerimage.yml@v1
+    permissions:
+      packages: write
     with:
       container_name: msda_switchbox_ui
       dockerhub_org: ''
